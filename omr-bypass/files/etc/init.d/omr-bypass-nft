@@ -926,6 +926,8 @@ start_service() {
 	}
 	disableipv6="$(uci -q get openmptcprouter.settings.disable_ipv6)"
 	#noipv6="$(uci -q get omr-bypass.global.noipv6)"
+	fwfilechangemd5=""
+	[ -f /etc/firewall.omr-bypass ] && fwfilechangemd5="$(md5sum /etc/firewall.omr-bypass)"
 	rm -f /etc/firewall.omr-bypass
 	#cat > /etc/firewall.omr-bypass <<-EOF
 	##!/bin/sh
@@ -1006,6 +1008,13 @@ start_service() {
 	}
 	uci -q commit omr-bypass
 	uci -q commit dhcp
+	fwfilechangemd5check=""
+	[ -f /etc/firewall.omr-bypass ] && fwfilechangemd5check="$(md5sum /etc/firewall.omr-bypass)"
+	if [ "$fwfilechangemd5check" = "$fwfilechangemd5" ]; then
+		RELOAD=""
+	fi
+
+
 	[ -n "$(uci -q changes firewall)" ] && {
 		uci -q commit firewall
 		[ -z "$RELOAD" ] && fw4 -q restart
