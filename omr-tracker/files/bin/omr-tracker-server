@@ -319,7 +319,7 @@ _check_master() {
 				config_foreach _enable_redir ss_redir "shadowsocks-rust"
 
 				[ -n "$ip" ] && [ -n "$(uci -q get openmptcprouter.${name}.ip_down | grep -w "${ip}")" ] && uci -q del_list openmptcprouter.${name}.ip_down="$ip"
-				
+				uci -q set openmptcprouter.${name}.current='1'
 				OMR_TRACKER_STATUS_MSG="Answer to ping and to API check"
 				mail_alert="$(uci -q get omr-tracker.server.mail_alert)"
 				#[ -z "$mail_alert" ] && mail_alert="$(uci -q get omr-tracker.defaults.mail_alert)"
@@ -391,9 +391,9 @@ _check_master() {
 		if [ "$oneserverup" = "0" ]; then
 			uci -q batch <<-EOF >/dev/null
 				set openmptcprouter.${name}.current='0'
-				commit openmptcprouter
 			EOF
 		fi
+		[ -n "$(uci -q changes openmptcprouter)" ] && uci -q commit openmptcprouter
 		[ -n "$(uci -q changes shadowsocks-libev)" ] && changes="1"
 		[ -n "$(uci -q changes shadowsocks-rust)" ] && changes="1"
 		[ -n "$(uci -q changes openvpn)" ] && changes="1"
@@ -531,6 +531,7 @@ _check_backup() {
 				config_foreach _enable_redir ss_redir "shadowsocks-rust"
 				
 				[ -n "$ip" ] && [ -n "$(uci -q get openmptcprouter.${name}.ip_down | grep -w "${ip}")" ] && uci -q del_list openmptcprouter.${name}.ip_down="$ip"
+				uci -q set openmptcprouter.${name}.current='1'
 
 				OMR_TRACKER_SERVER_IP="$ip"
 				OMR_TRACKER_STATUS="OK"
@@ -600,10 +601,10 @@ _check_backup() {
 		if [ "$oneserverup" = "0" ]; then
 			uci -q batch <<-EOF >/dev/null
 				set openmptcprouter.${name}.current='0'
-				commit openmptcprouter
 			EOF
 		fi
 
+		[ -n "$(uci -q changes openmptcprouter)" ] && uci -q commit openmptcprouter
 		[ -n "$(uci -q changes shadowsocks-libev)" ] && changes="1"
 		[ -n "$(uci -q changes shadowsocks-rust)" ] && changes="1"
 		[ -n "$(uci -q changes openvpn)" ] && changes="1"
