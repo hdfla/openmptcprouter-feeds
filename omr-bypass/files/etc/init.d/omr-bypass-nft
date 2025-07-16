@@ -459,22 +459,22 @@ _bypass_proto_without_ndpi() {
 	if [ "$(uci -q get openmptcprouter.settings.ndpi)" == "0" ] || [ "$ndpi" == "0" ] || [ "$vpn" = "1" ]; then
 		ALLIPS=$(sqlite3 /usr/share/omr-bypass/omr-bypass.db "select ip from ipproto where proto=\"$proto\";" ".exit")
 		if [ -n "$ALLIPS" ]; then
-				uci -q batch <<-EOF >/dev/null
-					set firewall.bypass_${proto}_${zone}=ipset
-					set firewall.bypass_${proto}_${zone}.name="bypass_${proto}_${zone}"
-					set firewall.bypass_${proto}_${zone}.match='dest_net'
-					set firewall.bypass_${proto}_${zone}.family='ipv4'
-					set firewall.bypass_${proto}_${zone}.enabled='1'
-					commit firewall
-				EOF
-				uci -q batch <<-EOF >/dev/null
-					set firewall.bypass6_${proto}_${zone}=ipset
-					set firewall.bypass6_${proto}_${zone}.name="bypass6_${proto}_${zone}"
-					set firewall.bypass6_${proto}_${zone}.match='dest_net'
-					set firewall.bypass6_${proto}_${zone}.family='ipv6'
-					set firewall.bypass6_${proto}_${zone}.enabled='1'
-					commit firewall
-				EOF
+			uci -q batch <<-EOF >/dev/null
+				set firewall.bypass_${proto}=ipset
+				set firewall.bypass_${proto}.name="bypass_${proto}"
+				set firewall.bypass_${proto}.match='dest_net'
+				set firewall.bypass_${proto}.family='ipv4'
+				set firewall.bypass_${proto}.enabled='1'
+				commit firewall
+			EOF
+			uci -q batch <<-EOF >/dev/null
+				set firewall.bypass6_${proto}=ipset
+				set firewall.bypass6_${proto}.name="bypass6_${proto}"
+				set firewall.bypass6_${proto}.match='dest_net'
+				set firewall.bypass6_${proto}.family='ipv6'
+				set firewall.bypass6_${proto}.enabled='1'
+				commit firewall
+			EOF
 
 
 			if [ "$vpn" != "1" ]; then
