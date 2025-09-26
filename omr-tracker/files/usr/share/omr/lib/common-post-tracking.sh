@@ -572,6 +572,7 @@ _del_server_route_common() {
 	local ipv6="${2:-false}"
 	local ip_cmd resolve_cmd gateway_var
 
+	[ -z "$OMR_TRACKER_DEVICE" ] && return
 	if [ "$ipv6" = "true" ]; then
 		ip_cmd="ip -6"
 		resolve_cmd="resolveip -6"
