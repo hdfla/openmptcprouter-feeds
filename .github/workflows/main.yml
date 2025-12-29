@@ -6,7 +6,7 @@ permissions:
   contents: write
 
 env:
-  REPO_URL: 'https://github.com/ysurac/openmptcprouter'
+  REPO_URL: 'https://github.com/hdfla/openmptcprouter'
 
 jobs:
   build:
