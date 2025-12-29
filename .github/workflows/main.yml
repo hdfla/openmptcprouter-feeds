@@ -14,7 +14,7 @@ jobs:
       matrix:
         OMR_TARGET: [arcadyan_aw1000, aliyun_xglink5g]
         OMR_KERNEL: [6.6]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     continue-on-error: true
 
     steps:
