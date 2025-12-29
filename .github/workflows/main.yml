@@ -1,6 +1,10 @@
 name: openmptcprouter
-on: [push]
-
+on: 
+  repository_dispatch:
+  workflow_dispatch:
+permissions:
+  contents: write
+  
 env:
   REPO_URL: 'https://github.com/hdfla/openmptcprouter'
 
