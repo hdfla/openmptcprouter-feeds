@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         OMR_TARGET: [arcadyan_aw1000, aliyun_xglink5g]
-        OMR_KERNEL: [6.6, 6.12, 6.17]
+        OMR_KERNEL: [6.6]
     runs-on: ubuntu-latest
     continue-on-error: true
 
