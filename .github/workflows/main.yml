@@ -12,8 +12,8 @@ jobs:
   build:
     strategy:
       matrix:
-        OMR_TARGET: [arcadyan_aw1000, aliyun_xglink5g]
-        OMR_KERNEL: [6.6]
+        OMR_TARGET: [arcadyan_aw1000, aliyun_xglink5g, netgear_rbX40]
+        OMR_KERNEL: [6.6, 6.12]
     runs-on: ubuntu-22.04
     continue-on-error: true
 
