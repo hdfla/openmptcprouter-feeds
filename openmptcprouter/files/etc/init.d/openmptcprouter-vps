@@ -6,7 +6,7 @@ START=99
 
 USE_PROCD=1
 
-EXTRA_COMMANDS="set_pihole backup_send backup_get backup_list set_vps_firewall get_openvpn_key set_gre_tunnel token set_bypass_ips"
+EXTRA_COMMANDS="set_pihole backup_send backup_get backup_list set_vps_firewall get_openvpn_key set_gre_tunnel token set_bypass_ips set_vpn_ip"
 
 . /usr/lib/unbound/iptools.sh
 
@@ -48,14 +48,14 @@ _login() {
 			#resolve="$(resolveip -t 5 $server)"
 			valid_ip6=$(valid_subnet6 $server)
 			if [ "$valid_ip6" = "ok" ]; then
-				auth=`curl --max-time 10 -s -k -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -X POST -d 'username='$username'&password='$password https://[$server]:$serverport/token`
+				auth=`curl -6 --max-time 10 -s -k -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -X POST -d 'username='$username'&password='$password https://[$server]:$serverport/token`
 			else
 				auth=`curl --max-time 10 -s -k -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -X POST -d 'username='$username'&password='$password https://$server:$serverport/token`
 			fi
 			if [ -z "$auth" ]; then
 				for intf in $(multipath 2>/dev/null | awk '/default/ { print $1 }'); do
 					if [ "$valid_ip6" = "ok" ]; then
-						auth=`curl --max-time 10 -s -k --interface $intf -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -X POST -d 'username='$username'&password='$password https://[$server]:$serverport/token`
+						auth=`curl -6 --max-time 10 -s -k --interface $intf -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -X POST -d 'username='$username'&password='$password https://[$server]:$serverport/token`
 					else
 						auth=`curl --max-time 10 -s -k --interface $intf -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -X POST -d 'username='$username'&password='$password https://$server:$serverport/token`
 					fi
@@ -86,14 +86,14 @@ _get_json() {
 		#resolve="$(resolveip -t 5 $server)"
 		valid_ip6=$(valid_subnet6 $server)
 		if [ "$valid_ip6" = "ok" ]; then
-			result=`curl --max-time 10 -s -k -H "accept: application/json" -H "Authorization: Bearer $token" https://[$server]:$serverport/$route`
+			result=`curl -6 --max-time 10 -s -k -H "accept: application/json" -H "Authorization: Bearer $token" https://[$server]:$serverport/$route`
 		else
 			result=`curl --max-time 10 -s -k -H "accept: application/json" -H "Authorization: Bearer $token" https://$server:$serverport/$route`
 		fi
 		if [ -z "$result" ]; then
 			for intf in $(multipath 2>/dev/null | awk '/default/ { print $1 }'); do
 				if [ "$valid_ip6" = "ok" ]; then
-					result=`curl --max-time 10 -s -k --interface $intf -H "accept: application/json" -H "Authorization: Bearer $token" https://[$server]:$serverport/$route`
+					result=`curl -6 --max-time 10 -s -k --interface $intf -H "accept: application/json" -H "Authorization: Bearer $token" https://[$server]:$serverport/$route`
 				else
 					result=`curl --max-time 10 -s -k --interface $intf -H "accept: application/json" -H "Authorization: Bearer $token" https://$server:$serverport/$route`
 				fi
@@ -118,14 +118,14 @@ _set_json() {
 		#resolve="$(resolveip -t 5 $server)"
 		valid_ip6=$(valid_subnet6 $server)
 		if [ "$valid_ip6" = "ok" ]; then
-			result=`curl --max-time 10 -s -k -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://[$server]:$serverport/$route`
+			result=`curl -6 --max-time 10 -s -k -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://[$server]:$serverport/$route`
 		else
 			result=`curl --max-time 10 -s -k -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://$server:$serverport/$route`
 		fi
 		if [ -z "$result" ]; then
 			for intf in $(multipath 2>/dev/null | awk '/default/ { print $1 }'); do
 				if [ "$valid_ip6" = "ok" ]; then
-					result=`curl --max-time 10 -s -k --interface $intf -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://[$server]:$serverport/$route`
+					result=`curl -6 --max-time 10 -s -k --interface $intf -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://[$server]:$serverport/$route`
 				else
 					result=`curl --max-time 10 -s -k --interface $intf -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://$server:$serverport/$route`
 				fi
@@ -190,6 +190,33 @@ _set_openvpn_vps() {
 		local settings
 		settings='{"port": '$port', "cipher": "'$cipher'"}'
 		echo $(_set_json "openvpn" "$settings")
+	else
+		echo 1
+	fi
+}
+
+_set_softethervpn_vps() {
+	local enabled port key
+	enabled="$(uci -q get softethervpn.openmptcprouter.enable)"
+	[ "$enabled" != "1" ] && echo "SoftEtherVPN disabled" && return
+	#port="$(uci -q get softethervpn.openmptcprouter.port)"
+	cipher="$(uci -q get softethervpn.openmptcprouter.encryption)"
+	password="$(uci -q get softethervpn.openmptcprouter.password)"
+	local current_port current_cipher
+	[ -z "$vps_config" ] && vps_config=$(_get_json "config")
+	[ -z "$vps_config" ] && return
+	#current_port="$(echo "$vps_config" | jsonfilter -q -e '@.softethervpn.port')"
+	current_cipher="$(echo "$vps_config" | jsonfilter -q -e '@.softethervpn.cipher')"
+	current_password="$(echo "$vps_config" | jsonfilter -q -e '@.softethervpn.password')"
+	if [ "$current_key" != "$key" ]; then
+		uci -q set openmptcprouter.${servername}.get_config="1"
+	fi
+	#if [ "$current_port" != "$port" ] || [ "$current_cipher" != "$cipher" ]; then
+	if [ "$current_cipher" != "$cipher" ]; then
+		local settings
+		#settings='{"port": '$port', "cipher": "'$cipher'"}'
+		settings='{"cipher": "'$cipher'", "password": "'$key'"}'
+		echo $(_set_json "softethervpn" "$settings")
 	else
 		echo 1
 	fi
@@ -265,7 +292,7 @@ get_openvpn_key() {
 		echo $openvpn_client_ca | base64 -d > /etc/luci-uploads/ca.crt
 	}
 	[ -n "$openvpn_client_key" ] && [ -n "$openvpn_client_crt" ] && [ -n "$openvpn_client_ca" ] && {
-		/etc/init.d/openvpn restart
+		[ "$(uci -q get openvpn.omr.enabled)" ] && /etc/init.d/openvpn restart
 	}
 }
 
@@ -623,6 +650,24 @@ _get_vps_config() {
 		fi
 	fi
 
+	port="$(echo "$vps_config" | jsonfilter -q -e '@.softethervpn.port')"
+	if [ -n "$(uci -q get softethervpn.openmptcprouter)" ] && ([ "$(uci -q get softethervpn.openmptcprouter.host)" != "127.0.0.1" ] && [ "$(uci -q get softethvpn.openmptcprouter.host)" != "$vpsip" ] && [ "$(uci -q get openmptcprouter.settings.ha)" != "1" ]) || [ "$(uci -q get softethervpn.openmptcprouter.port)" != "$port" ]; then
+		uci -q batch <<-EOF >/dev/null
+			set softethervpn.openmptcprouter.port=$port
+			set softethervpn.openmptcprouter.host="$vpsip"
+			commit softethervpn
+		EOF
+		uci -q batch <<-EOF >/dev/null
+			set network.omrvpn.proto='dhcp'
+			commit network
+		EOF
+			
+		if [ "$(uci -q get softethervpn.openmptcprouter.enable)" = "1" ]; then
+			logger -t "OMR-VPS" "Restart SoftEtherVPN..."
+			/etc/init.d/softethervpnclient restart
+		fi
+	fi
+
 	if [ -n "$(uci -q get mlvpn.general)" ] && [ "$(uci -q get mlvpn.general.host)" != "127.0.0.1" ] && [ "$(uci -q get mlvpn.general.host)" != "$vpsip" ] && [ "$(uci -q get openmptcprouter.settings.ha)" != "1" ] && [ -f /etc/init.d/mlvpn ]; then
 		uci -q batch <<-EOF >/dev/null
 			set mlvpn.general=mlvpn
@@ -677,7 +722,7 @@ _get_gre_tunnel() {
 			peeraddr="$(echo $tunnel | jsonfilter -q -e '@.remote_ip')"
 			ipaddr="$(echo $tunnel | jsonfilter -q -e '@.local_ip')"
 			publicaddr="$(echo $tunnel | jsonfilter -q -e '@.public_ip')"
-			if [ "$peeraddr" != "" ] && [ "$ipaddr" != "" ] && [ "$publicaddr" != "" ] && [ "$vpnip_local" != "" ] && ([ "$(uci -q get network.oip${i}.ipaddr)" != "$peeraddr" ] || [ "$(uci -q get network.oip${i}.gateway)" != "$ipaddr" ] || [ "$(uci -q get network.oip${i}gre.ipaddr)" != "$vpnip_local" ]); then
+			if [ "$peeraddr" != "" ] && [ "$ipaddr" != "" ] && [ "$publicaddr" != "" ] && [ "$vpnip_local" != "" ] && ([ "$(uci -q get network.oip${i}.ipaddr)" != "$peeraddr" ] || [ "$(uci -q get network.oip${i}.gateway)" != "$ipaddr" ] || [ "$(uci -q get network.oip${i}gre.ipaddr)" != "$vpnip_local" ] || ([ -n "$(uci -q get xray)" ] && [ -z "$(uci -q get xray.oip${i}server.s_vless_user_id)" ]) || ([ -n "$(uci -q get xray.oip${i}server_tunnel.protocol)" ] && [ "$(uci -q get xray.oip${i}server_tunnel.protocol)" != "$(uci -q get xray.omr_out.protocol)" ])); then
 				uci -q batch <<-EOF >/dev/null
 					set network.oip${i}gre=interface
 					set network.oip${i}gre.label="GRE tunnel for $publicaddr"
@@ -716,37 +761,131 @@ _get_gre_tunnel() {
 					uci -q add_list firewall.zone_vpn.network="oip${i}gre"
 					uci -q add_list firewall.zone_vpn.network="oip${i}"
 				}
-				ssport="$(echo $tunnel | jsonfilter -q -e '@.shadowsocks_port')"
-				uci -q batch <<-EOF >/dev/null
-					set shadowsocks-libev.oip${i}server=server
-					set shadowsocks-libev.oip${i}server.label="Server with public IP $publicaddr"
-					set shadowsocks-libev.oip${i}server.server_port="$ssport"
-					set shadowsocks-libev.oip${i}server.server="$(uci -q get shadowsocks-libev.sss0.server)"
-					set shadowsocks-libev.oip${i}server.method="$(uci -q get shadowsocks-libev.sss0.method)"
-					set shadowsocks-libev.oip${i}server.key="$(uci -q get shadowsocks-libev.sss0.key)"
-					set shadowsocks-libev.oip${i}=ss_redir
-					set shadowsocks-libev.oip${i}.label="ss-redir for public IP $publicaddr"
-					set shadowsocks-libev.oip${i}.server="oip${i}server"
-					set shadowsocks-libev.oip${i}.local_port="230$i"
-					set shadowsocks-libev.oip${i}.local_address="$(uci -q get shadowsocks-libev.hi.local_address)"
-					set shadowsocks-libev.oip${i}.mode='tcp_and_udp'
-					set shadowsocks-libev.oip${i}.reuse_port='1'
-					set shadowsocks-libev.oip${i}.mptcp='1'
-					set shadowsocks-libev.oip${i}.ipv6_first='1'
-					set shadowsocks-libev.oip${i}.timeout="$(uci -q get shadowsocks-libev.hi.timeout)"
-					set shadowsocks-libev.oip${i}.fast_open="$(uci -q get shadowsocks-libev.hi.fast_open)"
-					set shadowsocks-libev.oip${i}.no_delay="$(uci -q get shadowsocks-libev.hi.no_delay)"
-					set shadowsocks-libev.oip${i}_rule=ss_rules
-					set shadowsocks-libev.oip${i}_rule.label="Rules for public IP $publicaddr"
-					set shadowsocks-libev.oip${i}_rule.server="oip${i}server"
-					set shadowsocks-libev.oip${i}_rule.disabled='1'
-					set shadowsocks-libev.oip${i}_rule.src_default='bypass'
-					set shadowsocks-libev.oip${i}_rule.dst_default='bypass'
-					set shadowsocks-libev.oip${i}_rule.local_default='bypass'
-					set shadowsocks-libev.oip${i}_rule.redir_tcp="oip${i}"
-				EOF
-				if [ "$(uci -q get shadowsocks-libev.oip${i}server.disabled)" = "" ]; then
-					uci -q set shadowsocks-libev.oip${i}server.disabled="1"
+				if [ -n "$(uci -q get shadowsocks-libev)" ]; then
+					ssport="$(echo $tunnel | jsonfilter -q -e '@.shadowsocks_port')"
+					if [ -n "$ssport" ]; then
+						uci -q batch <<-EOF >/dev/null
+							set shadowsocks-libev.oip${i}server=server
+							set shadowsocks-libev.oip${i}server.label="Server with public IP $publicaddr"
+							set shadowsocks-libev.oip${i}server.server_port="$ssport"
+							set shadowsocks-libev.oip${i}server.server="$(uci -q get shadowsocks-libev.sss0.server)"
+							set shadowsocks-libev.oip${i}server.method="$(uci -q get shadowsocks-libev.sss0.method)"
+							set shadowsocks-libev.oip${i}server.key="$(uci -q get shadowsocks-libev.sss0.key)"
+							set shadowsocks-libev.oip${i}=ss_redir
+							set shadowsocks-libev.oip${i}.label="ss-redir for public IP $publicaddr"
+							set shadowsocks-libev.oip${i}.server="oip${i}server"
+							set shadowsocks-libev.oip${i}.local_port="230$i"
+							set shadowsocks-libev.oip${i}.local_address="$(uci -q get shadowsocks-libev.hi.local_address)"
+							set shadowsocks-libev.oip${i}.mode='tcp_and_udp'
+							set shadowsocks-libev.oip${i}.reuse_port='1'
+							set shadowsocks-libev.oip${i}.mptcp='1'
+							set shadowsocks-libev.oip${i}.ipv6_first='1'
+							set shadowsocks-libev.oip${i}.timeout="$(uci -q get shadowsocks-libev.hi.timeout)"
+							set shadowsocks-libev.oip${i}.fast_open="$(uci -q get shadowsocks-libev.hi.fast_open)"
+							set shadowsocks-libev.oip${i}.no_delay="$(uci -q get shadowsocks-libev.hi.no_delay)"
+							set shadowsocks-libev.oip${i}_rule=ss_rules
+							set shadowsocks-libev.oip${i}_rule.label="Rules for public IP $publicaddr"
+							set shadowsocks-libev.oip${i}_rule.server="oip${i}server"
+							set shadowsocks-libev.oip${i}_rule.disabled='1'
+							set shadowsocks-libev.oip${i}_rule.src_default='bypass'
+							set shadowsocks-libev.oip${i}_rule.dst_default='bypass'
+							set shadowsocks-libev.oip${i}_rule.local_default='bypass'
+							set shadowsocks-libev.oip${i}_rule.redir_tcp="oip${i}"
+						EOF
+						if [ "$(uci -q get shadowsocks-libev.oip${i}server.disabled)" = "" ]; then
+							uci -q set shadowsocks-libev.oip${i}server.disabled="1"
+						fi
+					fi
+				fi
+				if [ -n "$(uci -q get xray)" ]; then
+					xray_user="$(echo $tunnel | jsonfilter -q -e '@.xray.uuid')"
+					uci -q batch <<-EOF >/dev/null
+						delete xray.oip${i}server
+						delete xray.oip${i}server_tunnel
+						delete xray.oip${i}_redir
+						delete xray.oip${i}_routing
+						delete xray.oip${i}_transparent_proxy
+						del_list xray.main.outbounds="oip${i}server_tunnel"
+						del_list xray.main_routing.rules="oip${i}_routing"
+					EOF
+					if [ -n "$xray_user" ]; then
+						xray_ss2022="$(echo $tunnel | jsonfilter -q -e '@.xray.ss2022')"
+						xray_reality_user="$(echo $tunnel | jsonfilter -q -e '@.xray.vless_reality')"
+						xray_reality_key="$(echo $tunnel | jsonfilter -q -e '@.xray.vless_reality_key')"
+						echo "xray; $xray_reality_user - key: $xray_reality_key"
+						uci -q batch <<-EOF >/dev/null
+							delete xray.oip${i}server
+							set xray.oip${i}server_tunnel=outbound
+							set xray.oip${i}server_tunnel.tag='oip${i}server_tunnel'
+							set xray.oip${i}server_tunnel.protocol="$(uci -q get xray.omrout.protocol)"
+							set xray.oip${i}server_tunnel.s_vmess_port='65250'
+							set xray.oip${i}server_tunnel.s_vmess_user_security='aes-128-gcm'
+							set xray.oip${i}server_tunnel.s_vmess_user_alter_id='0'
+							set xray.oip${i}server_tunnel.s_vless_port='65248'
+							set xray.oip${i}server_tunnel.s_vless_user_security='aes-128-gcm'
+							set xray.oip${i}server_tunnel.s_vless_user_encryption='none'
+							set xray.oip${i}server_tunnel.s_vless_user_alter_id='0'
+							set xray.oip${i}server_tunnel.s_trojan_port='65249'
+							set xray.oip${i}server_tunnel.s_trojan_user_security='aes-128-gcm'
+							set xray.oip${i}server_tunnel.s_trojan_user_encryption='none'
+							set xray.oip${i}server_tunnel.s_trojan_user_alter_id='0'
+							set xray.oip${i}server_tunnel.s_socks_port='65251'
+							set xray.oip${i}server_tunnel.s_socks_user_security='aes-128-gcm'
+							set xray.oip${i}server_tunnel.s_socks_user_encryption='none'
+							set xray.oip${i}server_tunnel.s_socks_user_alter_id='0'
+							set xray.oip${i}server_tunnel.ss_network='tcp'
+							set xray.oip${i}server_tunnel.ss_security='tls'
+							set xray.oip${i}server_tunnel.ss_tls_allow_insecure='1'
+							set xray.oip${i}server_tunnel.ss_tls_disable_system_root='1'
+							set xray.oip${i}server_tunnel.ss_tls_cert_usage='verify'
+							set xray.oip${i}server_tunnel.ss_tls_cert_file='/etc/luci-uploads/client.crt'
+							set xray.oip${i}server_tunnel.ss_tls_key_file='/etc/luci-uploads/client.key'
+							set xray.oip${i}server_tunnel.s_shadowsocks_port='65252'
+							set xray.oip${i}server_tunnel.mux_concurrency='8'
+							set xray.oip${i}server_tunnel.ss_sockopt_mptcp='1'
+							set xray.oip${i}server_tunnel.s_vless_reality_port='443'
+							set xray.oip${i}server_tunnel.s_vless_reality_flow='xtls-rprx-vision'
+							set xray.oip${i}server_tunnel.s_vless_reality_user_security='aes-128-gcm'
+							set xray.oip${i}server_tunnel.s_vless_reality_user_encryption='none'
+							set xray.oip${i}server_tunnel.s_vless_reality_user_alter_id='0'
+							set xray.oip${i}server_tunnel.s_shadowsocks_email='openmptcprouter'
+							set xray.oip${i}server_tunnel.s_vmess_address="$(uci -q get xray.omrout.s_vless_address)"
+							set xray.oip${i}server_tunnel.s_vless_address="$(uci -q get xray.omrout.s_vless_address)"
+							set xray.oip${i}server_tunnel.s_vless_reality_address="$(uci -q get xray.omrout.s_vless_address)"
+							set xray.oip${i}server_tunnel.s_trojan_address="$(uci -q get xray.omrout.s_vless_address)"
+							set xray.oip${i}server_tunnel.s_socks_address="$(uci -q get xray.omrout.s_vless_address)"
+							set xray.oip${i}server_tunnel.s_shadowsocks_address="$(uci -q get xray.omrout.s_vless_address)"
+							set xray.oip${i}server_tunnel.s_shadowsocks_method='2022-blake3-aes-256-gcm'
+							set xray.oip${i}server_tunnel.s_shadowsocks_password="$(uci -q get xray.omrout.s_shadowsocks_password | cut -d':' -f 1):$xray_ss2022"
+							set xray.oip${i}server_tunnel.s_socks_user_id="${xray_user}"
+							set xray.oip${i}server_tunnel.s_trojan_user_id="${xray_user}"
+							set xray.oip${i}server_tunnel.s_vmess_user_id="${xray_user}"
+							set xray.oip${i}server_tunnel.s_vless_user_id="${xray_user}"
+							set xray.oip${i}server_tunnel.s_vless_reality_user_id="${xray_reality_user}"
+							set xray.oip${i}server_tunnel.s_vless_reality_public_key="${xray_reality_key}"
+							add_list xray.main.outbounds="oip${i}server_tunnel"
+							set xray.oip${i}_redir=inbound
+							set xray.oip${i}_redir.tag='oip${i}_redir'
+							set xray.oip${i}_redir.listen='0.0.0.0'
+							set xray.oip${i}_redir.port='180${i}'
+							set xray.oip${i}_redir.protocol='dokodemo-door'
+							set xray.oip${i}_redir.s_dokodemo_door_network='tcp' 'udp'
+							set xray.oip${i}_redir.ss_sockopt_tproxy='redirect'
+							set xray.oip${i}_redir.ss_sockopt_tcp_fast_open='1'
+							set xray.oip${i}_redir.ss_sockopt_mptcp='1'
+							set xray.oip${i}_redir.s_dokodemo_door_follow_redirect='1'
+							set xray.oip${i}_routing=routing_rule
+							set xray.oip${i}_routing.tag="oip${i}_routing"
+							set xray.oip${i}_routing.type='field'
+							set xray.oip${i}_routing.inbound_tag="oip${i}_redir"
+							set xray.oip${i}_routing.outbound_tag="oip${i}_tunnel"
+							add_list xray.main_routing.rules="oip${i}_routing"
+							set xray.oip${i}_transparent_proxy=transparent_proxy
+							set xray.oip${i}_transparent_proxy.proxy_mode='default'
+							set xray.oip${i}_transparent_proxy.redirect_udp='1'
+							set xray.oip${i}_transparent_proxy.redirect_port="180${i}"
+						EOF
+					fi
 				fi
 			fi
 			i=$((i+1))
@@ -755,6 +894,7 @@ _get_gre_tunnel() {
 			commit network
 			commit firewall
 			commit shadowsocks-libev
+			commit xray
 		EOF
 	fi
 }
@@ -1013,11 +1153,12 @@ _set_vpn_ip() {
 	[ "$(uci -q get openmptcprouter.settings.vpn)" = "none" ] && return
 	vpnifname="$(uci -q get network.omrvpn.device)"
 	vpnip_local_current="$(echo "$vps_config" | jsonfilter -q -e '@.vpn.remoteip')"
-	vpnip_local=$(ip -4 -br addr ls dev ${vpnifname} 2>/dev/null | awk -F'[ /]+' '{print $3}')
+	vpnip_local=$(ip -4 -br addr ls dev ${vpnifname} 2>/dev/null | head -n 1 | awk -F'[ /]+' '{print $3}')
+	[ -z "$vpnip_local" ]  && vpnip_local=$(ip -4 addr show dev "$OMR_TRACKER_DEVICE" | grep -m 1 inet | awk '{print $2}' | cut -d'/' -s -f1)
 	vpnip_remote_current="$(echo "$vps_config" | jsonfilter -q -e '@.vpn.localip')"
-	vpnip_remote=$(ip -4 r show default dev ${vpnifname} | awk '{print $3}' | tr -d "\n")
-	[ -z "$vpnip_remote" ] && [ -n "$vpnifname" ] && vpnip_remote=$(ip -4 r list dev ${vpnifname} 2>/dev/null | grep kernel | awk '{print $1}' | tr -d "\n")
-	[ -z "$vpnip_remote" ] && [ -n "$vpnifname" ] && vpnip_remote=$(ip -4 r list dev ${vpnifname} 2>/dev/null | grep "proto static src" | awk '{print $3}' | tr -d "\n")
+	vpnip_remote=$(ip -4 r show default dev ${vpnifname} | head -n 1 | awk '{print $3}' | tr -d "\n")
+	[ -z "$vpnip_remote" ] && [ -n "$vpnifname" ] && vpnip_remote=$(ip -4 r list dev ${vpnifname} 2>/dev/null | grep -m 1 kernel | awk '{print $1}' | tr -d "\n")
+	[ -z "$vpnip_remote" ] && [ -n "$vpnifname" ] && vpnip_remote=$(ip -4 r list dev ${vpnifname} 2>/dev/null | grep -m 1 "proto static src" | awk '{print $3}' | tr -d "\n")
 	[ -z "$vpnip_remote" ] && vpnip_remote=$(ifstatus omrvpn | jsonfilter -e '@.route[0].nexthop')
 	[ -z "$vpnip_remote" ] && [ "$vpnifname" = "bonding-omrvpn" ] && vpnip_remote="10.255.248.1"
 	ula="$(uci -q get network.globals.ula_prefix)"
@@ -1027,6 +1168,11 @@ _set_vpn_ip() {
 		result=$(_set_json "vpnips" "$settings")
 	fi
 }
+
+set_vpn_ip() {
+	_set_vpn_ip
+}
+
 
 _set_sipalg() {
 	local settings
@@ -1068,7 +1214,7 @@ _set_client2client() {
 			set network.omr_client2client_${c2cid}.gateway="${vpnip_remote}"
 		EOF
 	done
-	uci -q commit network
+	[ -n "$(uci -q changes network)" ] && uci -q commit network
 }
 
 _vps_firewall_redirect_port() {
@@ -1122,8 +1268,9 @@ _vps_firewall_redirect_port() {
 						comment=""
 						[ -n "$src_dip" ] && {
 							comment=" to $src_dip"
-							$IPTABLESSAVE --counters | sed "s:-d $src_dip/32::g" | $IPTABLESRESTORE -w
-							[ -f /usr/sbin/nft ] && {
+							if [ ! -f /usr/sbin/nft ]; then
+								$IPTABLESSAVE --counters | sed "s:-d $src_dip/32::g" | $IPTABLESRESTORE -w
+							else
 								rule=$(nft -a list table inet fw4 | grep -m1 "ip daddr $src_dip")
 								[ -n "$rule" ] && {
 									handle=$(echo $rule | awk '{ print $NF }')
@@ -1134,7 +1281,7 @@ _vps_firewall_redirect_port() {
 									handle=$(echo $rule | awk '{ print $NF }')
 									nft replace rule inet fw4 dstnat_vpn handle $handle $(echo $rule | awk '{ sub(" comment.*$",""); print }' | sed "s/ip daddr ${src_dip}/meta nfproto ipv4/") 2>&1 >/dev/null
 								}
-							}
+							fi
 						}
 						[ -n "$src_ip" ] && comment=" from $src_ip"
 						if [ "$target" = "ACCEPT" ]; then
@@ -1217,8 +1364,9 @@ _vps_firewall_redirect_port() {
 						comment=""
 						[ -n "$src_dip" ] && {
 							comment=" to $src_dip"
-							$IPTABLESSAVE --counters | sed "s:-d $src_dip/32::g" | $IPTABLESRESTORE -w
-							[ -f /usr/sbin/nft ] && {
+							if [ ! -f /usr/sbin/nft ]; then
+								$IPTABLESSAVE --counters | sed "s:-d $src_dip/32::g" | $IPTABLESRESTORE -w
+							else
 								rule=$(nft -a list table inet fw4 | grep -m1 "ip daddr $src_dip")
 								[ -n "$rule" ] && {
 									handle=$(echo $rule | awk '{ print $NF }')
@@ -1229,7 +1377,7 @@ _vps_firewall_redirect_port() {
 									handle=$(echo $rule | awk '{ print $NF }')
 									nft replace rule inet fw4 dstnat_vpn handle $handle $(echo $rule | awk '{ sub(" comment.*$",""); print }' | sed "s/ip daddr ${src_dip}/meta nfproto ipv4/") 2>&1 >/dev/null
 								}
-							}
+							fi
 						}
 						[ -n "$src_ip" ] && comment=" from $src_ip"
 						[ "$v2ray" = "1" ] && checkfw=$(echo "$vpsfwlist" | grep "# OMR $username open router $src_dport port ${protoi}${comment} --- V2Ray to ${dest_ip}:${dest_port}")
@@ -1680,6 +1828,9 @@ _set_config_from_vps() {
 			if [ "$(uci -q get shadowsocks-libev.sss0.disabled)" != "1" ]; then
 				logger -t "OMR-VPS" "Shadowsocks restart..."
 				/etc/init.d/shadowsocks-libev restart >/dev/null 2>&1
+			else
+				logger -t "OMR-VPS" "Shadowsocks stop..."
+				/etc/init.d/shadowsocks-libev stop >/dev/null 2>&1
 			fi
 		fi
 	fi
@@ -1710,6 +1861,9 @@ _set_config_from_vps() {
 			if [ "$(uci -q get shadowsocks-rust.sss0.disabled)" != "1" ]; then
 				logger -t "OMR-VPS" "Shadowsocks Rust restart..."
 				/etc/init.d/shadowsocks-rust restart >/dev/null 2>&1
+			else
+				logger -t "OMR-VPS" "Shadowsocks Rust stop..."
+				/etc/init.d/shadowsocks-rust stop >/dev/null 2>&1
 			fi
 		fi
 	fi
@@ -1740,6 +1894,9 @@ _set_config_from_vps() {
 			if [ "$(uci -q get v2ray.main.enabled)" = "1" ]; then
 				logger -t "OMR-VPS" "V2ray restart..."
 				/etc/init.d/v2ray restart >/dev/null 2>&1
+			else
+				logger -t "OMR-VPS" "Stop restart..."
+				/etc/init.d/v2ray stop >/dev/null 2>&1
 			fi
 		fi
 	fi
@@ -1779,6 +1936,9 @@ _set_config_from_vps() {
 			if [ "$(uci -q get xray.main.enabled)" = "1" ]; then
 				logger -t "OMR-VPS" "Xray restart..."
 				/etc/init.d/xray restart >/dev/null 2>&1
+			else
+				logger -t "OMR-VPS" "Xray stop..."
+				/etc/init.d/xray stop >/dev/null 2>&1
 			fi
 		fi
 	fi
@@ -1811,7 +1971,7 @@ _set_config_from_vps() {
 			/etc/init.d/glorytun restart >/dev/null 2>&1
 		fi
 	fi
-	if [ -n "$(uci -q get glorytun.udp)" ] && ( ([ -n "$glorytun_key" ] && [ "$glorytun_key" != "$(uci -q get glorytun-udp.vpn.key)" ]) || ([ -n "$glorytun_port" ] || [ "$glorytun_port" != "$(uci -q get glorytun-udp.vpn.port)" ]) ); then
+	if [ -n "$(uci -q get glorytun-udp.vpn)" ] && ( ([ -n "$glorytun_key" ] && [ "$glorytun_key" != "$(uci -q get glorytun-udp.vpn.key)" ]) || ([ -n "$glorytun_port" ] || [ "$glorytun_port" != "$(uci -q get glorytun-udp.vpn.port)" ]) ); then
 		vpn="$(uci -q get openmptcprouter.settings.vpn)"
 		glorytun_state=0
 		if [ "$vpn" = "glorytun_udp" ]; then
@@ -1873,8 +2033,10 @@ _set_config_from_vps() {
 		fi
 		if [ -n "$(uci -q changes openvpn)" ]; then
 			uci -q commit openvpn
-			logger -t "OMR-VPS" "OpenVPN restart..."
-			/etc/init.d/openvpn restart
+			if [ "$(uci -q get openvpn.omr.enabled)" = "1" ]; then
+				logger -t "OMR-VPS" "OpenVPN restart..."
+				/etc/init.d/openvpn restart
+			fi
 		fi
 	}
 	openvpn_client_key="$(echo "$vps_config" | jsonfilter -q -e '@.openvpn.client_key')"
@@ -1934,8 +2096,10 @@ _set_config_from_vps() {
 		fi
 		if [ -n "$(uci -q changes openvpn)" ]; then
 			uci -q commit openvpn
-			logger -t "OMR-VPS" "OpenVPN restart..."
-			/etc/init.d/openvpn restart
+			if [ "$(uci -q get openvpn.omr.enabled)" = "1" ]; then
+				logger -t "OMR-VPS" "OpenVPN restart..."
+				/etc/init.d/openvpn restart
+			fi
 		fi
 	}
 
@@ -1983,6 +2147,30 @@ _set_config_from_vps() {
 			uci -q commit dsvpn
 			logger -t "OMR-VPS" "DSVPN restart..."
 			/etc/init.d/dsvpn restart
+		fi
+	fi
+
+	# SoftEtherVPN settings
+	softethervpn_password="$(echo "$vps_config" | jsonfilter -q -e '@.softethervpn.password')"
+	softethervpn_port="$(echo "$vps_config" | jsonfilter -q -e '@.softethervpn.port')"
+	if [ -f /etc/init.d/softethervpnclient ] && [ -n "$(uci -q get softethervpn.openmptcprouter)" ] && ( ([ -n "$softethervpn_password" ] && [ "$softethervpn_password" != "$(uci -q get softethervpn.openmptcprouter.password)" ]) || ([ -n "$softhervpn_port" ] && [ "$softethervpn_port" != "$(uci -q get softethervpn.openmptcprouter.port)" ]) ); then
+		softethervpn_state=0
+		if [ "$vpn" = "softhervpn" ]; then
+			sofethersvpn_state=1
+		fi
+		uci -q batch <<-EOF >/dev/null
+			set softethervpn.openmptcprouter.password=$softethervpn_password
+			set softethervpn.openmptcprouter.enable=$softethervpn_state
+			set softethervpn.openmptcprouter.port=$softethervpn_port
+			commit softethervpn
+		EOF
+		if [ "$(uci -q get softethervpn.openmptcprouter.host)" != "127.0.0.1" ]; then
+			uci -q set softethervpn.openmptcprouter.host="$vpsip"
+		fi
+		if [ -n "$(uci -q changes softethervpn)" ]; then
+			uci -q commit softethervpn
+			logger -t "OMR-VPS" "SoftEther VPN restart..."
+			/etc/init.d/softethervpnclient restart
 		fi
 	fi
 
@@ -2247,7 +2435,7 @@ _backup_list() {
 backup_list() {
 	config_load openmptcprouter
 	config_foreach _backup_list server
-	uci -q commit openmptcprouter
+	[ -n "$(uci -q changes openmptcprouter)" ] && uci -q commit openmptcprouter
 }
 
 
@@ -2359,9 +2547,9 @@ _config_service() {
 					commit glorytun-udp
 				EOF
 				config_foreach _set_ss_server server "method" "aes-256-gcm"
-				uci -q commit shadowsocks-libev
+				[ -n "$(uci -q changes shadowsocks-libev)" ] && uci -q commit shadowsocks-libev
 				config_foreach _set_ssrust_server server "method" "2022-blake3-aes-256-gcm"
-				uci -q commit shadowsocks-rust
+				[ -n "$(uci -q changes shadowsocks-rust)" ] && uci -q commit shadowsocks-rust
 				[ "$method" != "aes-256-gcm" ] && {
 					logger -t "OMR-VPS" "Shadowsocks restart"
 					/etc/init.d/shadowsocks-libev restart
@@ -2387,6 +2575,7 @@ _config_service() {
 		([ -n "$(uci -q get glorytun.vpn)" ] || [ -n "$(uci -q get glorytun-udp.vpn)" ]) && [ -z "$(_set_glorytun_vps)" ] && error=1
 		[ -n "$(uci -q get openvpn.omr)" ] && [ -z "$(_set_openvpn_vps)" ] && error=1
 		[ -n "$(uci -q get mlvpn.general)" ] && [ -z "$(_set_mlvpn_vps)" ] && error=1
+		[ -n "$(uci -q get softethervpn.openmptcprouter)" ] && [ -z "$(_set_softethervpn_vps)" ] && error=1
 		_set_vps_firewall
 		[ -n "$(uci -q show network | grep wireguard)" ] && [ -z "$(_set_wireguard_vps)" ] && error=1
 	fi
@@ -2413,7 +2602,7 @@ _config_service() {
 	_set_sipalg
 	_set_bypass_ips
 	config_foreach _delete_client2client route
-	if [ "$(uci -q get openmptcprouter.settings.vpn)" != "openvpn" ] && [ "$(echo "$vps_config" | jsonfilter -q -e '@.client2client.enabled')" == "true" ]; then
+	if [ "$(uci -q get openmptcprouter.settings.vpn)" != "openvpn" ] && [ "$(echo "$vps_config" | jsonfilter -q -e '@.client2client.enabled')" = "true" ]; then
 		_set_client2client
 	fi
 	if [ "$error" = 0 ]; then

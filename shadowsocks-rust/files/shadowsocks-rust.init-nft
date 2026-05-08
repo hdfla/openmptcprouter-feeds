@@ -9,7 +9,7 @@
 USE_PROCD=1
 START=99
 
-EXTRA_COMMANDS="rules_up rules_down rules_exist"
+EXTRA_COMMANDS="rules_up rules_down rules_exist rules_reset"
 
 . /usr/lib/unbound/iptools.sh
 
@@ -113,6 +113,7 @@ ss_xxx() {
 		echo "$cfgtype $cfg: uci option bind_address deprecated, please switch to local_address" >&2
 		procd_append_param command -b "$bind_address"
 	fi
+	procd_set_param nice 10
 	procd_set_param file "$confjson"
 	procd_set_param respawn
 	procd_close_instance
@@ -218,6 +219,7 @@ ss_rules_nft_gen() {
 	json_add_string o_redir_tcp_port "$local_port_tcp"
 	json_add_string o_redir_udp_port "$local_port_udp"
 	json_add_string o_ifnames "$ifnames"
+	json_add_string o_tproxy "$tproxy"
 	json_add_string o_local_default "$local_default"
 	json_add_string o_src_bypass "$src_ips_bypass"
 	json_add_string o_src_forward "$src_ips_forward"
@@ -230,6 +232,7 @@ ss_rules_nft_gen() {
 	json_add_string o_dst_default "$dst_default"
 	json_add_string o_nft_tcp_extra "$nft_tcp_extra"
 	json_add_string o_nft_udp_extra "$nft_udp_extra"
+	json_add_string o_tun "$tun_mode"
 	json_dump -i >"$tmp.json"
 
 	if utpl -S -F "$tmp.json" "$ssrules_uc" >"$tmp.nft" \
@@ -249,7 +252,7 @@ ss_rules_nft_reset() {
 	if [ -f "$ssrules_nft" ] || [ -f "${ssrules_nft}.down" ]; then
 		rm -f "$ssrules_nft"
 		rm -f "${ssrules_nft}.down"
-		fw4 -q restart
+		fw4 -q reload
 	fi
 }
 
@@ -262,26 +265,28 @@ ss_rules() {
 rules_up() {
 	if [ -f "${ssrules_nft}.down" ]; then
 		mv -f "${ssrules_nft}.down" "$ssrules_nft"
-		fw4 -q restart
+		fw4 -q reload
 	fi
 }
 
 rules_down() {
 	if [ -f "${ssrules_nft}" ]; then
 		mv -f "$ssrules_nft" "${ssrules_nft}.down"
-		fw4 -q restart
+		fw4 -q reload
 	fi
 }
 
 rules_exist() {
 	if [ -f "$ssrules_nft" ]; then
-		return 0
+		exit 0
 	else
-		return 1
+		exit 1
 	fi
 }
 
-
+rules_reset() {
+	ss_rules
+}
 
 start_service() {
 	local cfgtype
@@ -418,7 +423,9 @@ validate_ss_rules_section() {
 		'local_default:or("bypass", "forward", "checkdst"):bypass' \
 		'nft_tcp_extra:string' \
 		'nft_udp_extra:string' \
-		'ifnames:maxlength(15)'
+		'ifnames:maxlength(15)' \
+		'tun_mode:string' \
+		'tproxy:bool:0'
 }
 
 validate_ss_server_section() {
