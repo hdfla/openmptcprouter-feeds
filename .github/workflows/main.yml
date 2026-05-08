@@ -85,7 +85,7 @@ jobs:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
-        make IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j$(nproc) || make IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j1 V=s
+        make PKG_HASH=skip IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j$(nproc) || make IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j1 V=s
     - name: Build image
       working-directory: ../../omr
       env:
