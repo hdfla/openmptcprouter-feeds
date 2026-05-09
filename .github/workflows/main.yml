@@ -12,7 +12,7 @@ jobs:
   build:
     strategy:
       matrix:
-        OMR_TARGET: [arcadyan_aw1000, aliyun_xglink5g, netgear_rbX40]
+        OMR_TARGET: [arcadyan_aw1000, netgear_rbX40]
         OMR_KERNEL: [6.6, 6.12]
     runs-on: ubuntu-22.04
     continue-on-error: true
@@ -85,14 +85,14 @@ jobs:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
-        make PKG_HASH=skip IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j$(nproc) || make IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j1 V=s
+        make PKG_HASH=skip PKG_MIRROR_HASH=skip IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j$(nproc) || make PKG_HASH=skip PKG_MIRROR_HASH=skip IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j1 V=s
     - name: Build image
       working-directory: ../../omr
       env:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
-        make IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source target/install -j$(nproc) || make IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source target/install -j1 V=s
+        make PKG_HASH=skip PKG_MIRROR_HASH=skip IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source target/install -j$(nproc) || make PKG_HASH=skip PKG_MIRROR_HASH=skip IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source target/install -j1 V=s
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
