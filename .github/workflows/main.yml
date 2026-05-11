@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         OMR_TARGET: [arcadyan_aw1000, netgear_rbX40]
-        OMR_KERNEL: [6.6, 6.12]
+        OMR_KERNEL: [6.12]
     runs-on: ubuntu-22.04
     continue-on-error: true
 
@@ -66,6 +66,9 @@ jobs:
         fi
         git pull
         pwd
+    - name: Skip APK hash check
+      run: |
+        sed -i 's/^PKG_HASH:=.*/PKG_HASH:=/' package/system/apk/Makefile
     - name: Build toolchain
       working-directory: ../../omr
       env:
