@@ -66,17 +66,6 @@ jobs:
         fi
         git pull
         pwd
-    - name: Fix APK Makefile hash check
-      run: |
-        APK_MAKEFILE="omr/${{ matrix.OMR_TARGET }}/${{ matrix.OMR_KERNEL }}/source/package/system/apk/Makefile"
-        if [ ! -f "$APK_MAKEFILE" ]; then
-          echo "::error::APK Makefile not found at $APK_MAKEFILE"
-          exit 1
-        fi
-        # Empty the hash so the check is skipped
-        sed -i 's/^PKG_HASH:=.*/PKG_HASH:=/' "$APK_MAKEFILE"
-        echo "Patched PKG_HASH line:"
-        grep 'PKG_HASH' "$APK_MAKEFILE"
     - name: Build toolchain
       working-directory: ../../omr
       env:
@@ -96,14 +85,14 @@ jobs:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
-        make PKG_HASH=skip PKG_MIRROR_HASH=skip IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j$(nproc) || make PKG_HASH=skip PKG_MIRROR_HASH=skip IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j1 V=s
+        make PKG_HASH= PKG_MIRROR_HASH= IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j$(nproc) || make PKG_HASH= PKG_MIRROR_HASH= IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j1 V=s
     - name: Build image
       working-directory: ../../omr
       env:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
-        make PKG_HASH=skip PKG_MIRROR_HASH=skip IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source target/install -j$(nproc) || make PKG_HASH=skip PKG_MIRROR_HASH=skip IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source target/install -j1 V=s
+        make PKG_HASH= PKG_MIRROR_HASH= IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source target/install -j$(nproc) || make PKG_HASH= PKG_MIRROR_HASH= IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source target/install -j1 V=s
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
