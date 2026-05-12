@@ -79,13 +79,32 @@ jobs:
         OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j$(nproc) || OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j1 V=s
         #echo -e "${{ secrets.OMR_PRIVKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build
         #echo -e "${{ secrets.OMR_PUBKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build.pub
+    - name: Fix all package hash placeholders
+      working-directory: ../../omr
+      env:
+        OMR_TARGET: ${{ matrix.OMR_TARGET }}
+        OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
+      run: |
+        find "$OMR_TARGET/$OMR_KERNEL/source" -name Makefile -exec grep -lE 'PKG_HASH:=skip|PKG_HASH:=x|override PKG_HASH' {} \; | while read f; do
+          echo "::notice::Patching $f"
+          sed -i \
+            -e 's/^PKG_HASH:=skip/PKG_HASH:=/' \
+            -e 's/^PKG_HASH:=x/PKG_HASH:=/' \
+            -e 's/^override PKG_HASH.*/PKG_HASH:=/' \
+            "$f"
+        done
+        # Fail if something was missed
+        if find "$OMR_TARGET/$OMR_KERNEL/source" -name Makefile -exec grep -lE '^PKG_HASH:=(skip|x)' {} \; ; then
+          echo "::error::Some PKG_HASH placeholders were not cleared!"
+          exit 1
+        fi
     - name: Build packages
       working-directory: ../../omr
       env:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
-        make PKG_HASH= PKG_MIRROR_HASH= IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j$(nproc) || make PKG_HASH= PKG_MIRROR_HASH= IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j1 V=s
+        make IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j$(nproc) || make IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j1 V=s
     - name: Build image
       working-directory: ../../omr
       env:
