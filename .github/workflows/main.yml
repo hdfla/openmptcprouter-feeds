@@ -85,17 +85,20 @@ jobs:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
-        find "$OMR_TARGET/$OMR_KERNEL/source" -name Makefile -exec grep -lE 'PKG_HASH:=skip|PKG_HASH:=x|override PKG_HASH' {} \; | while read f; do
+        BASE="$OMR_TARGET/$OMR_KERNEL/source"
+        # Find Makefiles containing invalid PKG_HASH or PKG_MIRROR_HASH values
+        find "$BASE" -name Makefile -exec grep -lE '^\s*(override\s+)?(PKG_HASH|PKG_MIRROR_HASH)\s*:=\s*(skip|"skip"|x|"x")\s*$' {} \; | while read f; do
           echo "::notice::Patching $f"
-          sed -i \
-            -e 's/^PKG_HASH:=skip/PKG_HASH:=/' \
-            -e 's/^PKG_HASH:=x/PKG_HASH:=/' \
-            -e 's/^override PKG_HASH.*/PKG_HASH:=/' \
+          # Replace the line with an empty assignment
+          sed -i -E \
+            -e 's/^\s*(override\s+)?PKG_HASH\s*:=\s*(skip|"skip"|x|"x")\s*$/PKG_HASH:=/' \
+            -e 's/^\s*(override\s+)?PKG_MIRROR_HASH\s*:=\s*(skip|"skip"|x|"x")\s*$/PKG_MIRROR_HASH:=/' \
             "$f"
         done
-        # Fail if something was missed
-        if find "$OMR_TARGET/$OMR_KERNEL/source" -name Makefile -exec grep -lE '^PKG_HASH:=(skip|x)' {} \; ; then
-          echo "::error::Some PKG_HASH placeholders were not cleared!"
+
+        # Final verification – fail if any invalid value remains
+        if find "$BASE" -name Makefile -exec grep -lE '^\s*(PKG_HASH|PKG_MIRROR_HASH)\s*:=\s*(skip|"skip"|x|"x")' {} \; ; then
+          echo "::error::Some PKG_HASH or PKG_MIRROR_HASH placeholders were not cleared!"
           exit 1
         fi
     - name: Build packages
