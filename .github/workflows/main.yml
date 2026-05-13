@@ -86,19 +86,24 @@ jobs:
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
         BASE="$OMR_TARGET/$OMR_KERNEL/source"
-        # Replace any line that sets PKG_HASH or PKG_MIRROR_HASH (with any value) 
-        # with an empty assignment. Handles leading spaces, tabs, override, etc.
-        find "$BASE" -name Makefile -exec sed -i \
-          -e '/^[[:space:]]*\(override[[:space:]]\+\)\?PKG_HASH[[:space:]]*:?=[[:space:]]*.*/c\PKG_HASH:=' \
-          -e '/^[[:space:]]*\(override[[:space:]]\+\)\?PKG_MIRROR_HASH[[:space:]]*:?=[[:space:]]*.*/c\PKG_MIRROR_HASH:=' \
-          {} \;
         
-        # Verify no non‑empty PKG_HASH lines remain
+        # Use extended regex (-E) so + and ? work properly
+        find "$BASE" -name Makefile -exec sed -i -E \
+          -e '/^[[:space:]]*(override[[:space:]]+)?PKG_HASH[[:space:]]*:?=[[:space:]]*.*/c\PKG_HASH:=' \
+          -e '/^[[:space:]]*(override[[:space:]]+)?PKG_MIRROR_HASH[[:space:]]*:?=[[:space:]]*.*/c\PKG_MIRROR_HASH:=' \
+          {} \;
+
+        # Verification - show any remaining non-empty hashes
         echo "Checking for remaining hashes..."
         BAD=$(find "$BASE" -name Makefile -exec grep -lE '^[[:space:]]*PKG_(MIRROR_)?HASH[[:space:]]*:?=[[:space:]]+[^[:space:]]' {} \; || true)
         if [ -n "$BAD" ]; then
           echo "::error::The following Makefiles still have non‑empty hashes:"
           echo "$BAD"
+          # Print the actual lines so you can inspect them
+          while IFS= read -r f; do
+            echo "--- $f ---"
+            grep -nE '^[[:space:]]*PKG_(MIRROR_)?HASH[[:space:]]*:?=[[:space:]]+' "$f"
+          done <<< "$BAD"
           exit 1
         fi
     - name: Build packages
