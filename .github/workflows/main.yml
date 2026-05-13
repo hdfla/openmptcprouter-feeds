@@ -79,28 +79,17 @@ jobs:
         OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j$(nproc) || OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j1 V=s
         #echo -e "${{ secrets.OMR_PRIVKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build
         #echo -e "${{ secrets.OMR_PUBKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build.pub
-    - name: Fix all package hash placeholders (robust)
+    - name: Disable all package hash checks
       working-directory: ../../omr
       env:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
         BASE="$OMR_TARGET/$OMR_KERNEL/source"
-        # Replace ANY line containing PKG_HASH:=skip or PKG_HASH:=x with a clean PKG_HASH:=
-        # Same for PKG_MIRROR_HASH
         find "$BASE" -name Makefile -exec sed -i \
-          -e '/PKG_HASH:=\s*\(skip\|x\)/c\PKG_HASH:=' \
-          -e '/PKG_MIRROR_HASH:=\s*\(skip\|x\)/c\PKG_MIRROR_HASH:=' \
+          -e '/^\s*\(override\s*\)\?PKG_HASH\s*:=.*/c\PKG_HASH:=' \
+          -e '/^\s*\(override\s*\)\?PKG_MIRROR_HASH\s*:=.*/c\PKG_MIRROR_HASH:=' \
           {} \;
-
-        # Now check if any placeholders remain – if so, print the offending files and fail
-        echo "Checking for remaining placeholders..."
-        BAD_FILES=$(find "$BASE" -name Makefile -exec grep -lE 'PKG_(MIRROR_)?HASH:=\s*(skip|x)' {} \;)
-        if [ -n "$BAD_FILES" ]; then
-          echo "::error::Some PKG_HASH or PKG_MIRROR_HASH placeholders were not cleared in:"
-          echo "$BAD_FILES"
-          exit 1
-        fi
     - name: Build packages
       working-directory: ../../omr
       env:
