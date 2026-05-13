@@ -79,32 +79,31 @@ jobs:
         OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j$(nproc) || OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j1 V=s
         #echo -e "${{ secrets.OMR_PRIVKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build
         #echo -e "${{ secrets.OMR_PUBKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build.pub
-    - name: Force-disable all package hash checks
+    - name: Fix all package hash placeholders
       working-directory: ../../omr
       env:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
         BASE="$OMR_TARGET/$OMR_KERNEL/source"
-        
-        # Use extended regex (-E) so + and ? work properly
-        find "$BASE" -name Makefile -exec sed -i -E \
-          -e '/^[[:space:]]*(override[[:space:]]+)?PKG_HASH[[:space:]]*:?=[[:space:]]*.*/c\PKG_HASH:=' \
-          -e '/^[[:space:]]*(override[[:space:]]+)?PKG_MIRROR_HASH[[:space:]]*:?=[[:space:]]*.*/c\PKG_MIRROR_HASH:=' \
-          {} \;
+        # Find Makefiles containing PKG_HASH or PKG_MIRROR_HASH with skip/x (possibly quoted)
+        find "$BASE" -name Makefile -exec grep -lE \
+          '(PKG_HASH|PKG_MIRROR_HASH)[[:space:]]*:?=[[:space:]]*(skip|"skip"|x|"x")' \
+          {} \; | while read f; do
+            echo "::notice::Patching $f"
+            # Replace the whole line containing the offending hash with an empty assignment
+            sed -i -E \
+              -e 's/^[[:space:]]*(override[[:space:]]+)?PKG_HASH[[:space:]]*:?=[[:space:]]*(skip|"skip"|x|"x").*/PKG_HASH:=/' \
+              -e 's/^[[:space:]]*(override[[:space:]]+)?PKG_MIRROR_HASH[[:space:]]*:?=[[:space:]]*(skip|"skip"|x|"x").*/PKG_MIRROR_HASH:=/' \
+              "$f"
+        done
 
-        # Verification - show any remaining non-empty hashes
-        echo "Checking for remaining hashes..."
-        BAD=$(find "$BASE" -name Makefile -exec grep -lE '^[[:space:]]*PKG_(MIRROR_)?HASH[[:space:]]*:?=[[:space:]]+[^[:space:]]' {} \; || true)
-        if [ -n "$BAD" ]; then
-          echo "::error::The following Makefiles still have non‑empty hashes:"
-          echo "$BAD"
-          # Print the actual lines so you can inspect them
-          while IFS= read -r f; do
-            echo "--- $f ---"
-            grep -nE '^[[:space:]]*PKG_(MIRROR_)?HASH[[:space:]]*:?=[[:space:]]+' "$f"
-          done <<< "$BAD"
-          exit 1
+        # Verify no placeholders remain
+        if find "$BASE" -name Makefile -exec grep -lE \
+          '(PKG_HASH|PKG_MIRROR_HASH)[[:space:]]*:?=[[:space:]]*(skip|"skip"|x|"x")' \
+          {} \; ; then
+            echo "::error::Some PKG_HASH or PKG_MIRROR_HASH placeholders were not cleared!"
+            exit 1
         fi
     - name: Build packages
       working-directory: ../../omr
