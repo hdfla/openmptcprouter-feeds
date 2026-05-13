@@ -79,31 +79,30 @@ jobs:
         OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j$(nproc) || OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j1 V=s
         #echo -e "${{ secrets.OMR_PRIVKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build
         #echo -e "${{ secrets.OMR_PUBKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build.pub
-    - name: Fix all package hash placeholders
+    - name: Fix all package hash placeholders (force empty)
       working-directory: ../../omr
       env:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
         BASE="$OMR_TARGET/$OMR_KERNEL/source"
-        # Find Makefiles containing PKG_HASH or PKG_MIRROR_HASH with skip/x (possibly quoted)
-        find "$BASE" -name Makefile -exec grep -lE \
-          '(PKG_HASH|PKG_MIRROR_HASH)[[:space:]]*:?=[[:space:]]*(skip|"skip"|x|"x")' \
-          {} \; | while read f; do
-            echo "::notice::Patching $f"
-            # Replace the whole line containing the offending hash with an empty assignment
-            sed -i -E \
-              -e 's/^[[:space:]]*(override[[:space:]]+)?PKG_HASH[[:space:]]*:?=[[:space:]]*(skip|"skip"|x|"x").*/PKG_HASH:=/' \
-              -e 's/^[[:space:]]*(override[[:space:]]+)?PKG_MIRROR_HASH[[:space:]]*:?=[[:space:]]*(skip|"skip"|x|"x").*/PKG_MIRROR_HASH:=/' \
-              "$f"
+        find "$BASE" -name Makefile | while read f; do
+          # Make PKG_HASH empty if it exists
+          if grep -qE '^[[:blank:]]*(override[[:blank:]]+)?PKG_HASH[[:blank:]]*:?=[[:blank:]]*' "$f"; then
+            echo "::notice::Patching PKG_HASH in $f"
+            sed -i -E 's/^[[:blank:]]*(override[[:blank:]]+)?PKG_HASH[[:blank:]]*:?=[[:blank:]]*.*/PKG_HASH:=/' "$f"
+          fi
+          # Make PKG_MIRROR_HASH empty if it exists
+          if grep -qE '^[[:blank:]]*(override[[:blank:]]+)?PKG_MIRROR_HASH[[:blank:]]*:?=[[:blank:]]*' "$f"; then
+            echo "::notice::Patching PKG_MIRROR_HASH in $f"
+            sed -i -E 's/^[[:blank:]]*(override[[:blank:]]+)?PKG_MIRROR_HASH[[:blank:]]*:?=[[:blank:]]*.*/PKG_MIRROR_HASH:=/' "$f"
+          fi
         done
 
-        # Verify no placeholders remain
-        if find "$BASE" -name Makefile -exec grep -lE \
-          '(PKG_HASH|PKG_MIRROR_HASH)[[:space:]]*:?=[[:space:]]*(skip|"skip"|x|"x")' \
-          {} \; ; then
-            echo "::error::Some PKG_HASH or PKG_MIRROR_HASH placeholders were not cleared!"
-            exit 1
+        # Final safety check – fail if any non‑empty placeholder remains
+        if find "$BASE" -name Makefile -exec grep -lE '^[[:blank:]]*(PKG_HASH|PKG_MIRROR_HASH)[[:blank:]]*:?=[[:blank:]]*[^[:blank:]]' {} \; ; then
+          echo "::error::Some PKG_HASH or PKG_MIRROR_HASH still not empty!"
+          exit 1
         fi
     - name: Build packages
       working-directory: ../../omr
