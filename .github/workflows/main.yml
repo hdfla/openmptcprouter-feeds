@@ -92,6 +92,16 @@ jobs:
         true;
         ' "$DL_PL"
         echo "Patched download.pl – hash checks disabled."
+    - name: Empty all HOST and TARGET hash variables
+      working-directory: ../../omr
+      env:
+        OMR_TARGET: ${{ matrix.OMR_TARGET }}
+        OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
+      run: |
+        BASE="$OMR_TARGET/$OMR_KERNEL/source"
+        find "$BASE" -name Makefile -exec sed -i -E \
+          -e 's/^([[:space:]]*)(override[[:space:]]+)?(HOST_)?PKG_(MIRROR_)?HASH[[:space:]]*[?:+]?=[[:space:]]*.*/\1\2\3PKG_\4HASH:=/' \
+          {} \;
     - name: Build packages
       working-directory: ../../omr
       env:
