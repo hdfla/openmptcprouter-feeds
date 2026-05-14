@@ -79,20 +79,28 @@ jobs:
         OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j$(nproc) || OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j1 V=s
         #echo -e "${{ secrets.OMR_PRIVKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build
         #echo -e "${{ secrets.OMR_PUBKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build.pub
-    - name: Disable hash check in download script (permanent)
+    - name: 1. Change the default hash placeholder to "skip" in download.mk
+      working-directory: ../../omr
+      env:
+        OMR_TARGET: ${{ matrix.OMR_TARGET }}
+        OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
+      run: |
+        sed -i 's/DOWNLOAD_ARGS += x/DOWNLOAD_ARGS += skip/' \
+          "$OMR_TARGET/$OMR_KERNEL/source/include/download.mk"
+        echo "Default hash placeholder changed from x to skip."
+
+    - name: 2. Patch download.pl to skip verification when hash is "skip"
       working-directory: ../../omr
       env:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
         DL_PL="$OMR_TARGET/$OMR_KERNEL/source/scripts/download.pl"
-        # Replace the hash verification block with a simple `true`
-        sed -i '/file_hash="\$/,/^[[:space:]]*}/c\
-        # hash check disabled by CI\
-        true;
-        ' "$DL_PL"
-        echo "Patched download.pl – hash checks disabled."
-    - name: Empty all HOST and TARGET hash variables
+        # After the hash argument assignment, set it to empty if it equals "skip"
+        sed -i '/^my \$hash = shift @ARGV;/a\    $hash = "" if $hash eq "skip";' "$DL_PL"
+        echo "Patched download.pl to ignore hash when 'skip' is given."
+
+    - name: 3. Set all PKG_HASH and PKG_MIRROR_HASH (including HOST) to "skip"
       working-directory: ../../omr
       env:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
@@ -100,8 +108,9 @@ jobs:
       run: |
         BASE="$OMR_TARGET/$OMR_KERNEL/source"
         find "$BASE" -name Makefile -exec sed -i -E \
-          -e 's/^([[:space:]]*)(override[[:space:]]+)?(HOST_)?PKG_(MIRROR_)?HASH[[:space:]]*[?:+]?=[[:space:]]*.*/\1\2\3PKG_\4HASH:=/' \
+          -e 's/^([[:space:]]*)(override[[:space:]]+)?(HOST_)?PKG_(MIRROR_)?HASH[[:space:]]*[?:+]?=[[:space:]]*.*/\1\2\3PKG_\4HASH:=skip/' \
           {} \;
+        echo "All existing hash lines set to 'skip'."
     - name: Build packages
       working-directory: ../../omr
       env:
