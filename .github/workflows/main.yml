@@ -89,16 +89,16 @@ jobs:
           "$OMR_TARGET/$OMR_KERNEL/source/include/download.mk"
         echo "Default hash placeholder changed from x to skip."
 
-    - name: 2. Patch download.pl to skip verification when hash is "skip"
+    - name: 2. Patch download.pl to ignore hash when value is "x" or "skip"
       working-directory: ../../omr
       env:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
         DL_PL="$OMR_TARGET/$OMR_KERNEL/source/scripts/download.pl"
-        # After the hash argument assignment, set it to empty if it equals "skip"
-        sed -i '/^my \$hash = shift @ARGV;/a\    $hash = "" if $hash eq "skip";' "$DL_PL"
-        echo "Patched download.pl to ignore hash when 'skip' is given."
+        # After the hash argument is read, set it to empty if it equals "x" or "skip"
+        sed -i '/^my \$hash = shift @ARGV;/a\    $hash = "" if $hash eq "x" || $hash eq "skip";' "$DL_PL"
+        echo "Patched download.pl to skip hash verification for 'x' or 'skip'."
 
     - name: 3. Set all PKG_HASH and PKG_MIRROR_HASH (including HOST) to "skip"
       working-directory: ../../omr
