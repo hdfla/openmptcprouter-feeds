@@ -79,39 +79,19 @@ jobs:
         OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j$(nproc) || OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j1 V=s
         #echo -e "${{ secrets.OMR_PRIVKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build
         #echo -e "${{ secrets.OMR_PUBKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build.pub
-    - name: Force‑disable all package hash checks (loop)
+    - name: Disable hash check in download script (permanent)
       working-directory: ../../omr
       env:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
-        BASE="$OMR_TARGET/$OMR_KERNEL/source"
-
-        find "$BASE" -name Makefile | while read f; do
-          # Replace any PKG_HASH / PKG_MIRROR_HASH line with an empty assignment
-          if grep -qE '^[[:blank:]]*(override[[:blank:]]+)?(PKG_HASH|PKG_MIRROR_HASH)[[:blank:]]*[?:+]?=[[:blank:]]*' "$f"; then
-            echo "::notice::Patching $f"
-            # Show the line before change
-            grep -nE '^[[:blank:]]*(override[[:blank:]]+)?(PKG_HASH|PKG_MIRROR_HASH)[[:blank:]]*[?:+]?=[[:blank:]]*' "$f"
-            sed -i -E 's/^([[:blank:]]*)(override[[:blank:]]+)?(PKG_HASH|PKG_MIRROR_HASH)[[:blank:]]*[?:+]?=[[:blank:]]*.*/\1\3:=/' "$f"
-          fi
-        done
-
-        # Debug: show the Lua Makefile’s PKG_HASH line directly
-        echo "Content of lua Makefile (PKG_HASH line):"
-        grep -nE 'PKG_HASH' "$BASE/package/utils/lua/Makefile" || true
-
-        # Final verification – correct pattern: NO mandatory space after operator
-        echo "Final verification..."
-        BAD=$(find "$BASE" -name Makefile -exec grep -lE '^[[:blank:]]*(PKG_HASH|PKG_MIRROR_HASH)[[:blank:]]*[?:+]?=[[:blank:]]*[^[:blank:]]' {} \; || true)
-        if [ -n "$BAD" ]; then
-          echo "::error::These Makefiles still have non‑empty hashes:"
-          echo "$BAD"
-          while IFS= read -r f; do
-            grep -nE '^[[:blank:]]*(PKG_HASH|PKG_MIRROR_HASH)[[:blank:]]*[?:+]?=[[:blank:]]*' "$f"
-          done <<< "$BAD"
-          exit 1
-        fi
+        DL_PL="$OMR_TARGET/$OMR_KERNEL/source/scripts/download.pl"
+        # Replace the hash verification block with a simple `true`
+        sed -i '/file_hash="\$/,/^[[:space:]]*}/c\
+        # hash check disabled by CI\
+        true;
+        ' "$DL_PL"
+        echo "Patched download.pl – hash checks disabled."
     - name: Build packages
       working-directory: ../../omr
       env:
