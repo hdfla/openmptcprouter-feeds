@@ -79,30 +79,29 @@ jobs:
         OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j$(nproc) || OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j1 V=s
         #echo -e "${{ secrets.OMR_PRIVKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build
         #echo -e "${{ secrets.OMR_PUBKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build.pub
-    - name: Force-disable all hash checks (robust)
+    - name: Force-disable all hash checks (catches plain =)
       working-directory: ../../omr
       env:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
         BASE="$OMR_TARGET/$OMR_KERNEL/source"
-        # Replace ANY line that sets PKG_HASH or PKG_MIRROR_HASH (with any operator)
-        # with a clean empty assignment. Handles :=  =  ?=  +=  override ...
+        # Replace any line that sets PKG_HASH or PKG_MIRROR_HASH (any operator)
+        # with a clean empty assignment.
         find "$BASE" -name Makefile -exec sed -i -E \
-          -e '/^[[:space:]]*(override[[:space:]]+)?PKG_HASH[[:space:]]*(\?=|:=|\+?=)[[:space:]]*.*/c\PKG_HASH:=' \
-          -e '/^[[:space:]]*(override[[:space:]]+)?PKG_MIRROR_HASH[[:space:]]*(\?=|:=|\+?=)[[:space:]]*.*/c\PKG_MIRROR_HASH:=' \
+          -e '/^[[:space:]]*(override[[:space:]]+)?PKG_HASH[[:space:]]*[?:+]?=[[:space:]]*.*/c\PKG_HASH:=' \
+          -e '/^[[:space:]]*(override[[:space:]]+)?PKG_MIRROR_HASH[[:space:]]*[?:+]?=[[:space:]]*.*/c\PKG_MIRROR_HASH:=' \
           {} \;
 
-        # Final check – show any remaining non‑empty hashes (for debugging only)
-        echo "Verifying..."
-        BAD=$(find "$BASE" -name Makefile -exec grep -lE '^[[:space:]]*(PKG_HASH|PKG_MIRROR_HASH)[[:space:]]*(\?=|:=|\+?=)[[:space:]]+[^[:space:]]' {} \; || true)
+        # Verification (optional – prints problematic lines as warning)
+        echo "Checking for remaining non‑empty hashes..."
+        BAD=$(find "$BASE" -name Makefile -exec grep -lE '^[[:space:]]*(PKG_HASH|PKG_MIRROR_HASH)[[:space:]]*[?:+]?=[[:space:]]+[^[:space:]]' {} \; || true)
         if [ -n "$BAD" ]; then
-          echo "::warning::Some hashes still not empty – printing details:"
+          echo "::warning::Some hashes still not empty – details:"
           while IFS= read -r f; do
             echo "--- $f ---"
-            grep -nE '^[[:space:]]*(PKG_HASH|PKG_MIRROR_HASH)[[:space:]]*(\?=|:=|\+?=)[[:space:]]+' "$f"
+            grep -nE '^[[:space:]]*(PKG_HASH|PKG_MIRROR_HASH)[[:space:]]*[?:+]?=[[:space:]]+' "$f"
           done <<< "$BAD"
-          # Do NOT exit 1 – we’ll let the build try anyway
         fi
     - name: Build packages
       working-directory: ../../omr
