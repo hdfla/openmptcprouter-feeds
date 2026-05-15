@@ -8,7 +8,7 @@ jobs:
   build:
     strategy:
       matrix:
-        OMR_TARGET: [x86_64, ubnt-erx, rutx50, z8102ax_128m, rbr40]
+        OMR_TARGET: [x86_64, ubnt-erx, rutx50, z8102ax_128m, netgear_rbr40]
         OMR_KERNEL: [6.12, 6.18]
     runs-on: ubuntu-latest
     continue-on-error: true
