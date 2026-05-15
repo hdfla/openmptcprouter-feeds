@@ -67,7 +67,6 @@ jobs:
         git pull
         pwd
     - name: Build toolchain
-      if: false  
       working-directory: ../../omr
       env:
         OMR_FEED_URL: https://github.com/hdfla/openmptcprouter-feeds
@@ -77,7 +76,8 @@ jobs:
         OMR_HOST: ${{ secrets.OMR_HOST }}
         OMR_PORT: ${{ secrets.OMR_PORT }}
       run: |
-        OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j$(nproc) || OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j1 V=s
+        OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare
+        #OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j$(nproc) || OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j1 V=s
         #echo -e "${{ secrets.OMR_PRIVKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build
         #echo -e "${{ secrets.OMR_PUBKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build.pub
     - name: 1. Change the default fallback hash from "x" to "skip" in download.mk
@@ -90,7 +90,6 @@ jobs:
         # Replace the fallback value "x" with "skip" for both PKG_HASH and PKG_MIRROR_HASH
         sed -i 's/\$(PKG_HASH),x)/\$(PKG_HASH),skip)/g' "$FILE"
         sed -i 's/\$(PKG_MIRROR_HASH),x)/\$(PKG_MIRROR_HASH),skip)/g' "$FILE"
-
     - name: 2. Make download.pl ignore the hash when it receives "skip"
       working-directory: ../../omr
       env:
@@ -100,7 +99,6 @@ jobs:
         DL_PL="$OMR_TARGET/$OMR_KERNEL/source/scripts/download.pl"
         # Insert a line that sets the hash to empty if it equals "skip"
         sed -i '/^my \$hash = shift @ARGV;/a\    $hash = "" if $hash eq "skip";' "$DL_PL"
-
     - name: 3. Delete ALL hash assignment lines from every package Makefile
       working-directory: ../../omr
       env:
