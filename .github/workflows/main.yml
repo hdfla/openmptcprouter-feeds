@@ -79,34 +79,22 @@ jobs:
         OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j$(nproc) || OMR_KERNEL="${OMR_KERNEL}" OMR_FEED_SRC="${SOURCE_NAME}" sh build.sh prepare {tools,toolchain}/install -j1 V=s
         #echo -e "${{ secrets.OMR_PRIVKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build
         #echo -e "${{ secrets.OMR_PUBKEY }}" > $OMR_TARGET/$OMR_KERNEL/source/key-build.pub
-    - name: 1. Change the default fallback hash from "x" to "skip" in download.mk
-      working-directory: ../../omr
-      env:
-        OMR_TARGET: ${{ matrix.OMR_TARGET }}
-        OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
-      run: |
-        FILE="$OMR_TARGET/$OMR_KERNEL/source/include/download.mk"
-        # Replace the fallback value "x" with "skip" for both PKG_HASH and PKG_MIRROR_HASH
-        sed -i 's/\$(PKG_HASH),x)/\$(PKG_HASH),skip)/g' "$FILE"
-        sed -i 's/\$(PKG_MIRROR_HASH),x)/\$(PKG_MIRROR_HASH),skip)/g' "$FILE"
-    - name: 2. Make download.pl ignore the hash when it receives "skip"
-      working-directory: ../../omr
-      env:
-        OMR_TARGET: ${{ matrix.OMR_TARGET }}
-        OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
-      run: |
-        DL_PL="$OMR_TARGET/$OMR_KERNEL/source/scripts/download.pl"
-        # Insert a line that sets the hash to empty if it equals "skip"
-        sed -i '/^my \$hash = shift @ARGV;/a\    $hash = "" if $hash eq "skip";' "$DL_PL"
-    - name: 3. Delete ALL hash assignment lines from every package Makefile
+    - name: Remove all hash fallback "x" from the build system
       working-directory: ../../omr
       env:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
         BASE="$OMR_TARGET/$OMR_KERNEL/source"
-        # Delete every line that sets PKG_HASH, PKG_MIRROR_HASH, HOST_PKG_HASH, HOST_PKG_MIRROR_HASH
-        # (handles all operators and leading spaces/tabs)
+        # 1. Replace PKG_HASH?=x (and ?= skip) with empty in include/*.mk files
+        find "$BASE/include" -type f -name '*.mk' -exec sed -i \
+          -e 's/^PKG_HASH?=.*/PKG_HASH:=/' \
+          -e 's/^PKG_MIRROR_HASH?=.*/PKG_MIRROR_HASH:=/' \
+          -e 's/^HOST_PKG_HASH?=.*/HOST_PKG_HASH:=/' \
+          -e 's/^HOST_PKG_MIRROR_HASH?=.*/HOST_PKG_MIRROR_HASH:=/' \
+          {} \;
+
+        # 2. Delete all PKG_HASH / PKG_MIRROR_HASH lines from every package Makefile
         find "$BASE" -name Makefile -exec sed -i \
           '/^[[:space:]]*\(override[[:space:]]\+\)\?\(HOST_\)\?PKG_\(MIRROR_\)\?HASH[[:space:]]*[?:+]\?=[[:space:]]*.*/d' \
           {} \;
@@ -116,12 +104,8 @@ jobs:
         OMR_TARGET: ${{ matrix.OMR_TARGET }}
         OMR_KERNEL: ${{ matrix.OMR_KERNEL }}
       run: |
-        make IGNORE_ERRORS=m \
-          -C $OMR_TARGET/$OMR_KERNEL/source \
-          package/{compile,install,index} -j$(nproc) \
-          || make IGNORE_ERRORS=m \
-             -C $OMR_TARGET/$OMR_KERNEL/source \
-             package/{compile,install,index} -j1 V=s
+        make IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j$(nproc) \
+          || make IGNORE_ERRORS=m -C $OMR_TARGET/$OMR_KERNEL/source package/{compile,install,index} -j1 V=s
     - name: Build image
       working-directory: ../../omr
       env:
